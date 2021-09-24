@@ -7,3 +7,5 @@ interface MetadataInterface {
   homepage?: string;
   source?: {tools?: string[]; location?: string};
 }
+
+declare function $$(a: Promise): Promise

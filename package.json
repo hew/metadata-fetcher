@@ -9,6 +9,9 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@tripod/asmcryptojs": "^2.3.0-compat",
+    "crypto-js": "^4.1.1",
+    "eres": "^1.0.1",
     "ipfs-http-client": "^52.0.5",
     "js-sha256": "^0.9.0",
     "next": "11.1.2",

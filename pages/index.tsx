@@ -1,6 +1,5 @@
-import {useEffect, useRef, useState} from 'react';
-import {sha256} from 'js-sha256';
-import {fetchEndpoint, matchUriWithRegex} from '../helpers'
+import {useRef, useState} from 'react';
+import crypto from 'crypto-js';
 
 enum Protocol {
   HTTPS = 'https',
@@ -13,42 +12,77 @@ const getBeforeDoubleSlash = /.*?(?=:\/\/)/;
 const getBeforeSingleSlash = /.*(?=\/)/;
 const getAfterSingleSlash = /(?<=\/).*/;
 
-async function getMetadata(uri: string): Promise<MetadataInterface> {
-  let metadata = {};
+/*
+ * @description - regex helper
+ */
+const matchUriWithRegex = (uri: string, rgx: RegExp): string => {
+  const matched = uri.match(rgx);
+  return matched.length ? matched[0] : '';
+};
+
+/*
+ * @description - fetch helper
+ */
+const fetchEndpoint = async (uri: string): Promise<string> => {
+  const [err, response] = await $$(fetch(uri));
+
+  if (err) throw new Error(err.message);
+
+  return response.text();
+};
+
+/*
+ * @description - retrieve metadata from different protocols
+ */
+interface Response {
+  data: MetadataInterface;
+  verified: boolean;
+}
+async function getMetadata(uri: string): Promise<Response> {
   const protocol = matchUriWithRegex(uri, getBeforeDoubleSlash);
 
   if (protocol === Protocol.HTTPS) {
-    metadata = await fetchEndpoint(uri);
+    const metadata = await fetchEndpoint(uri);
+    return {data: JSON.parse(metadata), verified: undefined};
   }
 
   if (protocol === Protocol.IPFS) {
     const cid = matchUriWithRegex(uri, getAfterDoubleSlash);
-    metadata = await fetchEndpoint(`https://ipfs.io/ipfs/${cid}`);
+    const metadata = await fetchEndpoint(`https://ipfs.io/ipfs/${cid}`);
+    return {data: JSON.parse(metadata), verified: undefined};
   }
 
   if (protocol === Protocol.SHA256) {
     const afterProtocol = matchUriWithRegex(uri, getAfterDoubleSlash);
-    const hash = matchUriWithRegex(afterProtocol, getBeforeSingleSlash);
+    const hex = matchUriWithRegex(afterProtocol, getBeforeSingleSlash);
     const rawLink = matchUriWithRegex(afterProtocol, getAfterSingleSlash);
     const link = rawLink.replace(/%2F/g, '/');
-    console.warn(hash, "unused hash")
-    metadata = await fetchEndpoint(link);
-  }
+    const metadata = await fetchEndpoint(link);
+    const receivedHash = crypto.SHA256(metadata);
+    const receivedHex = receivedHash.toString(crypto.enc.Hex);
 
-  return metadata;
+    if (`0x${receivedHex}` !== hex) {
+      return {data: JSON.parse(metadata), verified: false};
+    }
+
+    return {data: JSON.parse(metadata), verified: true};
+  }
 }
 
 export default function Home() {
   const inputRef = useRef(undefined);
-  const [metaData, setMetaData] = useState(undefined as undefined | MetadataInterface);
+  const [metaData, setMetaData] = useState({} as MetadataInterface);
+  const [verified, setVerified] = useState(undefined);
 
   const handleSubmit = async (event: React.SyntheticEvent) => {
     event.preventDefault();
     const {value} = inputRef.current;
-    const meta = await getMetadata(value);
-    setMetaData(meta);
+    const {data, verified} = await getMetadata(value);
+    setMetaData(data);
+    setVerified(verified);
   };
 
+  console.log(verified, 'verified');
   return (
     <div>
       <div className="flex justify-center mt-5 mb-5">
@@ -71,9 +105,22 @@ export default function Home() {
           </form>
         </div>
       </div>
-      <div className="text-xs flex justify-center py-5">
-        <pre>{JSON.stringify(metaData, null, '\t')}</pre>
-      </div>
+      {Object.keys(metaData).length > 0 && (
+        <article>
+          <div className="text-xs flex justify-center py-5">
+            <div>
+              {verified !== undefined && (
+                <p className={verified ? 'text-green-900' : 'text-red-900'}>
+                  {verified
+                    ? 'Data Verified'
+                    : 'Data Could Not Be Verified'}
+                </p>
+              )}
+              <pre>{JSON.stringify(metaData, null, '\t')}</pre>
+            </div>
+          </div>
+        </article>
+      )}
     </div>
   );
 }
